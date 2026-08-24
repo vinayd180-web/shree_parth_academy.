@@ -22,9 +22,6 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app
 COPY --from=build /app/publish .
 
-# Copy appsettings.json
-COPY src/Shivakala.Web/appsettings.json /app/appsettings.json
-
 # Create App_Data directory
 RUN mkdir -p /app/App_Data
 

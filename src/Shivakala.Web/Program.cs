@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Localization;
 using Shivakala.Infrastructure.Extensions;
 
 var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+var dbHost = Environment.GetEnvironmentVariable("DB_HOST");
+
 if (!string.IsNullOrEmpty(databaseUrl))
 {
     try
@@ -19,33 +21,45 @@ if (!string.IsNullOrEmpty(databaseUrl))
         var conn = $"Host={uri.Host};Port={uri.Port};Database={database};Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true;";
         Environment.SetEnvironmentVariable("ConnectionStrings__DefaultConnection", conn);
         Environment.SetEnvironmentVariable("ConnectionStrings__PostgreSql", conn);
+        Environment.SetEnvironmentVariable("ConnectionStrings__Default", conn);
         Environment.SetEnvironmentVariable("Database__Provider", "PostgreSql");
-        Console.WriteLine($"[Fix] DB parsed Host={uri.Host} DB={database} Port={uri.Port}");
+        Console.WriteLine($"[Fix] DB from DATABASE_URL Host={uri.Host} DB={database} Port={uri.Port}");
     }
-    catch (Exception ex)
+    catch (Exception ex) { Console.WriteLine($"[Fix] DATABASE_URL parse failed: {ex.Message}"); }
+}
+else if (!string.IsNullOrEmpty(dbHost))
+{
+    try
     {
-        Console.WriteLine($"[Fix] parse failed: {ex.Message}");
+        var port = Environment.GetEnvironmentVariable("DB_PORT")?? "5432";
+        var db = Environment.GetEnvironmentVariable("DB_NAME")?? "shivakala";
+        var user = Environment.GetEnvironmentVariable("DB_USER")?? "";
+        var pass = Environment.GetEnvironmentVariable("DB_PASSWORD")?? "";
+        var conn = $"Host={dbHost};Port={port};Database={db};Username={user};Password={pass};SSL Mode=Require;Trust Server Certificate=true;";
+        Environment.SetEnvironmentVariable("ConnectionStrings__DefaultConnection", conn);
+        Environment.SetEnvironmentVariable("ConnectionStrings__PostgreSql", conn);
+        Environment.SetEnvironmentVariable("ConnectionStrings__Default", conn);
+        Environment.SetEnvironmentVariable("Database__Provider", "PostgreSql");
+        Console.WriteLine($"[Fix] DB from DB_HOST vars Host={dbHost} DB={db} Port={port} User={user}");
     }
+    catch (Exception ex) { Console.WriteLine($"[Fix] DB_HOST parse failed: {ex.Message}"); }
+}
+else
+{
+    Console.WriteLine("[Fix] No DATABASE_URL or DB_HOST found - using appsettings.json");
 }
 
-var port = Environment.GetEnvironmentVariable("PORT")?? "8080";
-
+var portEnv = Environment.GetEnvironmentVariable("PORT")?? "8080";
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseUrls($"http://+:{port}");
+builder.WebHost.UseUrls($"http://+:{portEnv}");
 var appDataPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data");
 var dataProtectionPath = Path.Combine(appDataPath, "DataProtection-Keys");
-
 Directory.CreateDirectory(appDataPath);
 Directory.CreateDirectory(dataProtectionPath);
-
-builder.Services.AddDataProtection()
-   .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionPath))
-   .SetApplicationName("ShivakalaCoaching");
-
+builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(dataProtectionPath)).SetApplicationName("ShivakalaCoaching");
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(x => x.MultipartBodyLengthLimit = 20 * 1024 * 1024);
 builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
 builder.Services.AddInfrastructure(builder.Configuration);
-
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(options =>
 {
     options.Cookie.Name = "Shivakala.Auth";
@@ -55,37 +69,8 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     options.SlidingExpiration = true;
     options.LoginPath = "/admin/login";
     options.AccessDeniedPath = "/access-denied";
-    options.Events = new CookieAuthenticationEvents
-    {
-        OnRedirectToLogin = ctx =>
-        {
-            var path = ctx.Request.Path.Value?? "";
-            if (path.StartsWith("/teacher", StringComparison.OrdinalIgnoreCase))
-            {
-                var ret = Uri.EscapeDataString(ctx.Request.Path + ctx.Request.QueryString);
-                ctx.Response.Redirect($"/teacher/login?returnUrl={ret}");
-            }
-            else if (path.StartsWith("/parent", StringComparison.OrdinalIgnoreCase))
-            {
-                var ret = Uri.EscapeDataString(ctx.Request.Path + ctx.Request.QueryString);
-                ctx.Response.Redirect($"/parent/login?returnUrl={ret}");
-            }
-            else { ctx.Response.Redirect(ctx.RedirectUri); }
-            return Task.CompletedTask;
-        },
-        OnRedirectToAccessDenied = ctx =>
-        {
-            var user = ctx.HttpContext.User;
-            if (user.IsInRole("Teacher")) { ctx.Response.Redirect("/teacher"); return Task.CompletedTask; }
-            if (user.IsInRole("Parent")) { ctx.Response.Redirect("/parent"); return Task.CompletedTask; }
-            ctx.Response.Redirect("/access-denied");
-            return Task.CompletedTask;
-        }
-    };
 });
-
 builder.Services.AddControllersWithViews().AddViewLocalization().AddDataAnnotationsLocalization();
-
 var supportedCultures = new[] { new CultureInfo("en"), new CultureInfo("mr") };
 builder.Services.Configure<RequestLocalizationOptions>(options =>
 {
@@ -95,15 +80,10 @@ builder.Services.Configure<RequestLocalizationOptions>(options =>
 });
 
 var app = builder.Build();
-
 app.UseRequestLocalization();
 app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
-
-app.MapControllerRoute(
-    name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}");
-
+app.MapControllerRoute(name: "default", pattern: "{controller=Home}/{action=Index}/{id?}");
 app.Run();

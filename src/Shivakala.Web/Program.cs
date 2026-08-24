@@ -2,7 +2,6 @@ using System.Globalization;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Localization;
-using Shivakala.Infrastructure.Data.Seed;
 using Shivakala.Infrastructure.Extensions;
 
 var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
@@ -18,8 +17,6 @@ if (!string.IsNullOrEmpty(databaseUrl))
         var database = uri.AbsolutePath.TrimStart('/');
         if (database.Contains("?")) database = database.Split('?')[0];
         var conn = $"Host={uri.Host};Port={uri.Port};Database={database};Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true;";
-
-        // FIX: sahi spelling ConnectionStrings
         Environment.SetEnvironmentVariable("ConnectionStrings__DefaultConnection", conn);
         Environment.SetEnvironmentVariable("ConnectionStrings__PostgreSql", conn);
         Environment.SetEnvironmentVariable("Database__Provider", "PostgreSql");
@@ -35,7 +32,6 @@ var port = Environment.GetEnvironmentVariable("PORT")?? "8080";
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls($"http://+:{port}");
-
 var appDataPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data");
 var dataProtectionPath = Path.Combine(appDataPath, "DataProtection-Keys");
 
@@ -100,13 +96,6 @@ builder.Services.Configure<RequestLocalizationOptions>(options =>
 
 var app = builder.Build();
 
-// Seed / Migration handled in Infrastructure
-using (var scope = app.Services.CreateScope())
-{
-    try { await DbInitializer.InitializeAsync(scope.ServiceProvider); }
-    catch (Exception ex) { Console.WriteLine($"[Seed] failed: {ex.Message}"); }
-}
-
 app.UseRequestLocalization();
 app.UseStaticFiles();
 app.UseRouting();
@@ -118,8 +107,3 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
 app.Run();
-
-void EnsureDirectory(string path)
-{
-    if (!Directory.Exists(path)) Directory.CreateDirectory(path);
-}

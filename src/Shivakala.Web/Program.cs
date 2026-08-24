@@ -1,89 +1,91 @@
-using System.Globalization;
-using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Localization;
-using Shivakala.Infrastructure.Extensions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Shivakala.Application.Interfaces;
+using Shivakala.Infrastructure.Data;
+using Shivakala.Infrastructure.Repositories;
+using Shivakala.Infrastructure.Services;
+using Shivakala.Web.Resources;
+using System.Globalization;
 
-var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
-var dbHost = Environment.GetEnvironmentVariable("DB_HOST");
+var builder = WebApplication.CreateBuilder(args);
 
-if (!string.IsNullOrEmpty(databaseUrl))
+// --- Database Connection Logic [Fix] ---
+var host = Environment.GetEnvironmentVariable("DB_HOST");
+var dbName = Environment.GetEnvironmentVariable("DB_NAME");
+var port = Environment.GetEnvironmentVariable("DB_PORT")?? "5432";
+var user = Environment.GetEnvironmentVariable("DB_USER");
+var pass = Environment.GetEnvironmentVariable("DB_PASSWORD");
+
+string connectionString;
+if (!string.IsNullOrEmpty(host))
 {
-    try
-    {
-        var raw = databaseUrl.Replace("postgresql://", "postgres://");
-        var uri = new Uri(raw);
-        var userInfo = uri.UserInfo.Split(':', 2);
-        var username = userInfo.Length > 0? userInfo[0] : "";
-        var password = userInfo.Length > 1? userInfo[1] : "";
-        var database = uri.AbsolutePath.TrimStart('/');
-        if (database.Contains("?")) database = database.Split('?')[0];
-        var conn = $"Host={uri.Host};Port={uri.Port};Database={database};Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true;";
-        Environment.SetEnvironmentVariable("ConnectionStrings__DefaultConnection", conn);
-        Environment.SetEnvironmentVariable("ConnectionStrings__PostgreSql", conn);
-        Environment.SetEnvironmentVariable("ConnectionStrings__Default", conn);
-        Environment.SetEnvironmentVariable("Database__Provider", "PostgreSql");
-        Console.WriteLine($"[Fix] DB from DATABASE_URL Host={uri.Host} DB={database} Port={uri.Port}");
-    }
-    catch (Exception ex) { Console.WriteLine($"[Fix] DATABASE_URL parse failed: {ex.Message}"); }
-}
-else if (!string.IsNullOrEmpty(dbHost))
-{
-    try
-    {
-        var port = Environment.GetEnvironmentVariable("DB_PORT")?? "5432";
-        var db = Environment.GetEnvironmentVariable("DB_NAME")?? "shivakala";
-        var user = Environment.GetEnvironmentVariable("DB_USER")?? "";
-        var pass = Environment.GetEnvironmentVariable("DB_PASSWORD")?? "";
-        var conn = $"Host={dbHost};Port={port};Database={db};Username={user};Password={pass};SSL Mode=Require;Trust Server Certificate=true;";
-        Environment.SetEnvironmentVariable("ConnectionStrings__DefaultConnection", conn);
-        Environment.SetEnvironmentVariable("ConnectionStrings__PostgreSql", conn);
-        Environment.SetEnvironmentVariable("ConnectionStrings__Default", conn);
-        Environment.SetEnvironmentVariable("Database__Provider", "PostgreSql");
-        Console.WriteLine($"[Fix] DB from DB_HOST vars Host={dbHost} DB={db} Port={port} User={user}");
-    }
-    catch (Exception ex) { Console.WriteLine($"[Fix] DB_HOST parse failed: {ex.Message}"); }
+    connectionString = $"Host={host};Database={dbName};Port={port};Username={user};Password={pass};SSL Mode=Require;Trust Server Certificate=true;";
+    Console.WriteLine($"[Fix] DB from DB_HOST vars Host={host} DB={dbName}");
 }
 else
 {
-    Console.WriteLine("[Fix] No DATABASE_URL or DB_HOST found - using appsettings.json");
+    connectionString = builder.Configuration.GetConnectionString("DefaultConnection")?? "";
+    Console.WriteLine("[Fix] DB from DefaultConnection");
 }
 
-var portEnv = Environment.GetEnvironmentVariable("PORT")?? "8080";
-var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseUrls($"http://+:{portEnv}");
-var appDataPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data");
-var dataProtectionPath = Path.Combine(appDataPath, "DataProtection-Keys");
-Directory.CreateDirectory(appDataPath);
-Directory.CreateDirectory(dataProtectionPath);
-builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(dataProtectionPath)).SetApplicationName("ShivakalaCoaching");
-builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(x => x.MultipartBodyLengthLimit = 20 * 1024 * 1024);
+builder.Services.AddDbContext<ShivakalaDbContext>(options =>
+    options.UseNpgsql(connectionString));
+
+// --- Your Original Services ---
+builder.Services.AddScoped<ICourseRepository, CourseRepository>();
+builder.Services.AddScoped<ICourseService, CourseService>();
+builder.Services.AddScoped<IHomePageService, HomePageService>();
+
 builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
-builder.Services.AddInfrastructure(builder.Configuration);
-builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(options =>
-{
-    options.Cookie.Name = "Shivakala.Auth";
-    options.Cookie.HttpOnly = true;
-    options.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Strict;
-    options.ExpireTimeSpan = TimeSpan.FromHours(8);
-    options.SlidingExpiration = true;
-    options.LoginPath = "/admin/login";
-    options.AccessDeniedPath = "/access-denied";
-});
-builder.Services.AddControllersWithViews().AddViewLocalization().AddDataAnnotationsLocalization();
-var supportedCultures = new[] { new CultureInfo("en"), new CultureInfo("mr") };
-builder.Services.Configure<RequestLocalizationOptions>(options =>
-{
-    options.DefaultRequestCulture = new RequestCulture("mr");
+builder.Services.AddControllersWithViews()
+   .AddViewLocalization()
+   .AddDataAnnotationsLocalization(options => {
+        options.DataAnnotationLocalizerProvider = (type, factory) => factory.Create(typeof(SharedResource));
+    });
+
+builder.Services.Configure<RequestLocalizationOptions>(options => {
+    var supportedCultures = new[] { new CultureInfo("en"), new CultureInfo("hi"), new CultureInfo("mr") };
+    options.DefaultRequestCulture = new RequestCulture("en");
     options.SupportedCultures = supportedCultures;
     options.SupportedUICultures = supportedCultures;
 });
 
 var app = builder.Build();
-app.UseRequestLocalization();
+
+// --- TABLE CREATE FIX - Isse Courses does not exist khatam hoga ---
+try
+{
+    using (var scope = app.Services.CreateScope())
+    {
+        var db = scope.ServiceProvider.GetRequiredService<ShivakalaDbContext>();
+        db.Database.EnsureCreated();
+        Console.WriteLine(">>> TABLES CREATED SUCCESSFULLY <<<");
+    }
+}
+catch (Exception ex)
+{
+    Console.WriteLine($">>> FAILED: {ex.Message} <<<");
+}
+
+var locOptions = app.Services.GetService<IOptions<RequestLocalizationOptions>>();
+app.UseRequestLocalization(locOptions.Value);
+
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler("/Home/Error");
+    app.UseHsts();
+}
+
+app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
-app.MapControllerRoute(name: "default", pattern: "{controller=Home}/{action=Index}/{id?}");
+
+app.MapControllerRoute(
+    name: "default",
+    pattern: "{controller=Home}/{action=Index}/{id?}");
+app.MapRazorPages();
+
 app.Run();

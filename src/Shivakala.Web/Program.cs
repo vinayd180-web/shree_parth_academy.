@@ -18,30 +18,43 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
 });
 Console.WriteLine($"[Port Config] Server listening on port: {port}");
 
-// --- Database Connection Logic [Fix] ---
-var host = Environment.GetEnvironmentVariable("DB_HOST");
-var dbName = Environment.GetEnvironmentVariable("DB_NAME");
-var dbPort = Environment.GetEnvironmentVariable("DB_PORT")?? "5432";
-var user = Environment.GetEnvironmentVariable("DB_USER");
-var pass = Environment.GetEnvironmentVariable("DB_PASSWORD");
-
+// --- Database Connection Logic [Railway Fix] ---
 string connectionString = "";
-if (!string.IsNullOrEmpty(host) && !string.IsNullOrEmpty(dbName) && !string.IsNullOrEmpty(user) && !string.IsNullOrEmpty(pass))
+
+// Try to get DATABASE_URL from Railway
+var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+
+if (!string.IsNullOrEmpty(databaseUrl))
 {
-    connectionString = $"Host={host};Database={dbName};Port={dbPort};Username={user};Password={pass};SSL Mode=Require;Trust Server Certificate=true;";
-    Console.WriteLine($"[DB Config] Using PostgreSQL from environment variables - Host={host}, Database={dbName}, Port={dbPort}");
+    connectionString = databaseUrl;
+    Console.WriteLine($"[DB Config] Using DATABASE_URL from Railway");
 }
 else
 {
-    connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? "";
-    if (!string.IsNullOrEmpty(connectionString))
+    // Fallback for local development
+    var host = Environment.GetEnvironmentVariable("DB_HOST");
+    var dbName = Environment.GetEnvironmentVariable("DB_NAME");
+    var dbPort = Environment.GetEnvironmentVariable("DB_PORT") ?? "5432";
+    var user = Environment.GetEnvironmentVariable("DB_USER");
+    var pass = Environment.GetEnvironmentVariable("DB_PASSWORD");
+
+    if (!string.IsNullOrEmpty(host) && !string.IsNullOrEmpty(dbName) && !string.IsNullOrEmpty(user) && !string.IsNullOrEmpty(pass))
     {
-        Console.WriteLine("[DB Config] Using connection string from appsettings");
+        connectionString = $"Host={host};Database={dbName};Port={dbPort};Username={user};Password={pass};SSL Mode=Require;Trust Server Certificate=true;";
+        Console.WriteLine($"[DB Config] Using PostgreSQL from environment variables - Host={host}, Database={dbName}, Port={dbPort}");
     }
     else
     {
-        Console.WriteLine("[DB Config WARNING] No database connection configured! Using SQLite fallback.");
-        connectionString = "Data Source=App_Data/shivakala.db";
+        connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? "";
+        if (!string.IsNullOrEmpty(connectionString))
+        {
+            Console.WriteLine("[DB Config] Using connection string from appsettings");
+        }
+        else
+        {
+            Console.WriteLine("[DB Config WARNING] No database connection configured! Using SQLite fallback.");
+            connectionString = "Data Source=App_Data/shivakala.db";
+        }
     }
 }
 
@@ -61,9 +74,10 @@ builder.Services.AddScoped<ICourseService, CourseService>();
 builder.Services.AddScoped<IHomePageService, HomePageService>();
 
 builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
+
 builder.Services.AddControllersWithViews()
-   .AddViewLocalization()
-   .AddDataAnnotationsLocalization(options => {
+    .AddViewLocalization()
+    .AddDataAnnotationsLocalization(options => {
         options.DataAnnotationLocalizerProvider = (type, factory) => factory.Create(typeof(SharedResource));
     });
 

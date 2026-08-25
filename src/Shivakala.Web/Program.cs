@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Shivakala.Application.Interfaces;
 using Shivakala.Infrastructure.Data;
 using Shivakala.Infrastructure.Repositories;
 using Shivakala.Infrastructure.Services;
@@ -22,7 +21,7 @@ Console.WriteLine($"[Port Config] Server listening on port: {port}");
 // --- Database Connection Logic [Railway Fix] ---
 string connectionString = "";
 
-// TRY DATABASE_URL FIRST - THIS IS THE MAIN FIX
+// Try to get DATABASE_URL from Railway
 var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
 
 if (!string.IsNullOrEmpty(databaseUrl))
@@ -72,7 +71,8 @@ if (string.IsNullOrWhiteSpace(connectionString))
 builder.Services.AddDbContext<ShivakalaDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// --- Your Original Services ---
+// --- Register Services ---
+// Note: Interfaces are in Infrastructure since Application project doesn't exist
 builder.Services.AddScoped<ICourseRepository, CourseRepository>();
 builder.Services.AddScoped<ICourseService, CourseService>();
 builder.Services.AddScoped<IHomePageService, HomePageService>();
@@ -94,13 +94,12 @@ builder.Services.Configure<RequestLocalizationOptions>(options => {
 
 var app = builder.Build();
 
-// --- DATABASE MIGRATION FIX - Use Migrate() instead of EnsureCreated() ---
+// --- DATABASE MIGRATION ---
 try
 {
     using (var scope = app.Services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<ShivakalaDbContext>();
-        // This will apply all pending migrations and create tables if they don't exist
         db.Database.Migrate();
         Console.WriteLine(">>> DATABASE MIGRATED SUCCESSFULLY <<<");
     }

@@ -1,14 +1,11 @@
-using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using Shivakala.Infrastructure.Data;
 using Shivakala.Infrastructure.Repositories;
 using Shivakala.Infrastructure.Services;
-using System.Globalization;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- PORT CONFIGURATION FIX ---
+// --- PORT CONFIGURATION ---
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
@@ -16,7 +13,7 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
 });
 Console.WriteLine($"[Port Config] Server listening on port: {port}");
 
-// --- Database Connection Logic [Railway Fix] ---
+// --- Database Connection ---
 string connectionString = "";
 var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
 
@@ -68,16 +65,8 @@ builder.Services.AddScoped<ICourseRepository, CourseRepository>();
 builder.Services.AddScoped<ICourseService, CourseService>();
 builder.Services.AddScoped<IHomePageService, HomePageService>();
 
-// --- Localization Setup ---
-builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
-builder.Services.AddControllersWithViews().AddViewLocalization();
-
-builder.Services.Configure<RequestLocalizationOptions>(options => {
-    var supportedCultures = new[] { new CultureInfo("en"), new CultureInfo("hi"), new CultureInfo("mr") };
-    options.DefaultRequestCulture = new RequestCulture("en");
-    options.SupportedCultures = supportedCultures;
-    options.SupportedUICultures = supportedCultures;
-});
+// --- MVC Setup ---
+builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
 
@@ -109,9 +98,7 @@ catch (Exception ex)
     }
 }
 
-var locOptions = app.Services.GetService<IOptions<RequestLocalizationOptions>>();
-app.UseRequestLocalization(locOptions.Value);
-
+// --- Middleware ---
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");

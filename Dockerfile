@@ -25,7 +25,8 @@ COPY --from=build /app/publish .
 # Create App_Data directory
 RUN mkdir -p /app/App_Data
 
-ENV ASPNETCORE_URLS=http://+:${PORT:-5000}
-EXPOSE ${PORT:-5000}
+# Environment variables (Render will override PORT at runtime)
+ENV ASPNETCORE_ENVIRONMENT=Production
+EXPOSE 5000
 
 ENTRYPOINT ["dotnet", "Shivakala.Web.dll"]

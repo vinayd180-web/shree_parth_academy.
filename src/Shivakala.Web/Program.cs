@@ -10,17 +10,25 @@ using System.Globalization;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// --- PORT CONFIGURATION FIX ---
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.ListenAnyIP(int.Parse(port));
+});
+Console.WriteLine($"[Port Config] Server listening on port: {port}");
+
 // --- Database Connection Logic [Fix] ---
 var host = Environment.GetEnvironmentVariable("DB_HOST");
 var dbName = Environment.GetEnvironmentVariable("DB_NAME");
-var port = Environment.GetEnvironmentVariable("DB_PORT")?? "5432";
+var dbPort = Environment.GetEnvironmentVariable("DB_PORT")?? "5432";
 var user = Environment.GetEnvironmentVariable("DB_USER");
 var pass = Environment.GetEnvironmentVariable("DB_PASSWORD");
 
 string connectionString;
 if (!string.IsNullOrEmpty(host))
 {
-    connectionString = $"Host={host};Database={dbName};Port={port};Username={user};Password={pass};SSL Mode=Require;Trust Server Certificate=true;";
+    connectionString = $"Host={host};Database={dbName};Port={dbPort};Username={user};Password={pass};SSL Mode=Require;Trust Server Certificate=true;";
     Console.WriteLine($"[Fix] DB from DB_HOST vars Host={host} DB={dbName}");
 }
 else

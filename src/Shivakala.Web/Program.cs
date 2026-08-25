@@ -22,16 +22,19 @@ Console.WriteLine($"[Port Config] Server listening on port: {port}");
 // --- Database Connection Logic [Railway Fix] ---
 string connectionString = "";
 
-// Try to get DATABASE_URL from Railway
+// TRY DATABASE_URL FIRST - THIS IS THE MAIN FIX
 var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
 
 if (!string.IsNullOrEmpty(databaseUrl))
 {
     connectionString = databaseUrl;
-    Console.WriteLine($"[DB Config] Using DATABASE_URL from Railway");
+    Console.WriteLine($"[DB Config] ✅ Using DATABASE_URL from Railway");
+    Console.WriteLine($"[DB Config] Connection string length: {connectionString.Length}");
 }
 else
 {
+    Console.WriteLine("[DB Config WARNING] DATABASE_URL not found, checking individual variables...");
+    
     // Fallback for local development
     var host = Environment.GetEnvironmentVariable("DB_HOST");
     var dbName = Environment.GetEnvironmentVariable("DB_NAME");

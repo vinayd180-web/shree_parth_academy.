@@ -25,16 +25,31 @@ var dbPort = Environment.GetEnvironmentVariable("DB_PORT")?? "5432";
 var user = Environment.GetEnvironmentVariable("DB_USER");
 var pass = Environment.GetEnvironmentVariable("DB_PASSWORD");
 
-string connectionString;
-if (!string.IsNullOrEmpty(host))
+string connectionString = "";
+if (!string.IsNullOrEmpty(host) && !string.IsNullOrEmpty(dbName) && !string.IsNullOrEmpty(user) && !string.IsNullOrEmpty(pass))
 {
     connectionString = $"Host={host};Database={dbName};Port={dbPort};Username={user};Password={pass};SSL Mode=Require;Trust Server Certificate=true;";
-    Console.WriteLine($"[Fix] DB from DB_HOST vars Host={host} DB={dbName}");
+    Console.WriteLine($"[DB Config] Using PostgreSQL from environment variables - Host={host}, Database={dbName}, Port={dbPort}");
 }
 else
 {
-    connectionString = builder.Configuration.GetConnectionString("DefaultConnection")?? "";
-    Console.WriteLine("[Fix] DB from DefaultConnection");
+    connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? "";
+    if (!string.IsNullOrEmpty(connectionString))
+    {
+        Console.WriteLine("[DB Config] Using connection string from appsettings");
+    }
+    else
+    {
+        Console.WriteLine("[DB Config WARNING] No database connection configured! Using SQLite fallback.");
+        connectionString = "Data Source=App_Data/shivakala.db";
+    }
+}
+
+// Validate connection string
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    Console.WriteLine("[CRITICAL ERROR] No database connection string available. Application cannot start.");
+    Environment.Exit(1);
 }
 
 builder.Services.AddDbContext<ShivakalaDbContext>(options =>
@@ -61,7 +76,7 @@ builder.Services.Configure<RequestLocalizationOptions>(options => {
 
 var app = builder.Build();
 
-// --- TABLE CREATE FIX - Isse Courses does not exist khatam hoga ---
+// --- TABLE CREATE FIX - With Better Error Handling ---
 try
 {
     using (var scope = app.Services.CreateScope())
@@ -73,7 +88,11 @@ try
 }
 catch (Exception ex)
 {
-    Console.WriteLine($">>> FAILED: {ex.Message} <<<");
+    Console.WriteLine($">>> CRITICAL ERROR: Failed to create database tables <<<");
+    Console.WriteLine($">>> Error Message: {ex.Message} <<<");
+    Console.WriteLine($">>> Stack Trace: {ex.StackTrace} <<<");
+    // Log but don't crash - app can run with table creation failure
+    // (tables might already exist)
 }
 
 var locOptions = app.Services.GetService<IOptions<RequestLocalizationOptions>>();

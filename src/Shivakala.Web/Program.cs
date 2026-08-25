@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Localization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Shivakala.Core.Interfaces;
 using Shivakala.Infrastructure.Data;
 using Shivakala.Infrastructure.Repositories;
 using Shivakala.Infrastructure.Services;
@@ -16,36 +17,44 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
 });
 Console.WriteLine($"[Port Config] Server listening on port: {port}");
 
-// --- DATABASE CONFIGURATION ---
-// Check for DATABASE_URL first (Railway)
-var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
-var provider = Environment.GetEnvironmentVariable("Database__Provider") ?? "PostgreSql";
-
+// --- POSTGRESQL DATABASE CONFIGURATION ---
 string connectionString = "";
+
+// 1. Check for DATABASE_URL (Railway provides this)
+var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
 
 if (!string.IsNullOrEmpty(databaseUrl))
 {
     connectionString = databaseUrl;
-    Console.WriteLine($"[DB Config] Using DATABASE_URL from Railway");
+    Console.WriteLine($"[DB Config] ✅ Using PostgreSQL DATABASE_URL from Railway");
 }
 else
 {
-    // Fallback to appsettings
-    var configProvider = builder.Configuration["Database:Provider"];
-    if (configProvider?.ToLower() == "postgresql")
+    // 2. Check for individual DB_* variables (fallback)
+    var host = Environment.GetEnvironmentVariable("DB_HOST");
+    var dbName = Environment.GetEnvironmentVariable("DB_NAME");
+    var dbPort = Environment.GetEnvironmentVariable("DB_PORT") ?? "5432";
+    var user = Environment.GetEnvironmentVariable("DB_USER");
+    var pass = Environment.GetEnvironmentVariable("DB_PASSWORD");
+
+    if (!string.IsNullOrEmpty(host) && !string.IsNullOrEmpty(dbName) && !string.IsNullOrEmpty(user) && !string.IsNullOrEmpty(pass))
     {
-        connectionString = builder.Configuration.GetConnectionString("PostgreSql") ?? "";
-        Console.WriteLine($"[DB Config] Using PostgreSQL from appsettings");
-    }
-    else if (configProvider?.ToLower() == "sqlserver")
-    {
-        connectionString = builder.Configuration.GetConnectionString("SqlServer") ?? "";
-        Console.WriteLine($"[DB Config] Using SQL Server from appsettings");
+        connectionString = $"Host={host};Database={dbName};Port={dbPort};Username={user};Password={pass};SSL Mode=Require;Trust Server Certificate=true;";
+        Console.WriteLine($"[DB Config] Using PostgreSQL from environment variables");
     }
     else
     {
-        connectionString = builder.Configuration.GetConnectionString("Sqlite") ?? "Data Source=App_Data/shivakala.db";
-        Console.WriteLine($"[DB Config] Using SQLite from appsettings");
+        // 3. Fallback to appsettings
+        connectionString = builder.Configuration.GetConnectionString("PostgreSql") ?? "";
+        if (!string.IsNullOrEmpty(connectionString))
+        {
+            Console.WriteLine($"[DB Config] Using PostgreSQL from appsettings");
+        }
+        else
+        {
+            Console.WriteLine("[CRITICAL ERROR] No PostgreSQL connection string found!");
+            Environment.Exit(1);
+        }
     }
 }
 
@@ -55,30 +64,16 @@ if (string.IsNullOrWhiteSpace(connectionString))
     Environment.Exit(1);
 }
 
+// --- Register DbContext with PostgreSQL ---
 builder.Services.AddDbContext<ShivakalaDbContext>(options =>
-{
-    var provider = builder.Configuration["Database:Provider"]?.ToLower();
-    
-    if (provider == "postgresql" || !string.IsNullOrEmpty(databaseUrl))
-    {
-        options.UseNpgsql(connectionString);
-    }
-    else if (provider == "sqlserver")
-    {
-        options.UseSqlServer(connectionString);
-    }
-    else
-    {
-        options.UseSqlite(connectionString);
-    }
-});
+    options.UseNpgsql(connectionString));
 
-// --- Register Services ---
+// --- Register Services (from Infrastructure) ---
 builder.Services.AddScoped<ICourseRepository, CourseRepository>();
 builder.Services.AddScoped<ICourseService, CourseService>();
 builder.Services.AddScoped<IHomePageService, HomePageService>();
 
-// --- MVC Setup ---
+// --- MVC + Localization ---
 builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
 builder.Services.AddControllersWithViews().AddViewLocalization();
 
@@ -98,24 +93,24 @@ try
     {
         var db = scope.ServiceProvider.GetRequiredService<ShivakalaDbContext>();
         db.Database.Migrate();
-        Console.WriteLine(">>> DATABASE MIGRATED SUCCESSFULLY <<<");
+        Console.WriteLine(">>> POSTGRESQL DATABASE MIGRATED SUCCESSFULLY <<<");
     }
 }
 catch (Exception ex)
 {
-    Console.WriteLine($">>> ERROR: Failed to migrate database: {ex.Message} <<<");
+    Console.WriteLine($">>> ERROR: Failed to migrate PostgreSQL database: {ex.Message} <<<");
     try
     {
         using (var scope = app.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ShivakalaDbContext>();
             db.Database.EnsureCreated();
-            Console.WriteLine(">>> TABLES CREATED WITH EnsureCreated <<<");
+            Console.WriteLine(">>> POSTGRESQL TABLES CREATED WITH EnsureCreated <<<");
         }
     }
     catch (Exception ex2)
     {
-        Console.WriteLine($">>> ERROR: Failed to create tables: {ex2.Message} <<<");
+        Console.WriteLine($">>> ERROR: Failed to create PostgreSQL tables: {ex2.Message} <<<");
     }
 }
 

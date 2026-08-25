@@ -4,7 +4,6 @@ using Microsoft.Extensions.Options;
 using Shivakala.Infrastructure.Data;
 using Shivakala.Infrastructure.Repositories;
 using Shivakala.Infrastructure.Services;
-using Shivakala.Web.Resources;
 using System.Globalization;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -71,12 +70,7 @@ builder.Services.AddScoped<IHomePageService, HomePageService>();
 
 // --- Localization Setup ---
 builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
-
-builder.Services.AddControllersWithViews()
-    .AddViewLocalization()
-    .AddDataAnnotationsLocalization(options => {
-        options.DataAnnotationLocalizerProvider = (type, factory) => factory.Create(typeof(SharedResource));
-    });
+builder.Services.AddControllersWithViews().AddViewLocalization();
 
 builder.Services.Configure<RequestLocalizationOptions>(options => {
     var supportedCultures = new[] { new CultureInfo("en"), new CultureInfo("hi"), new CultureInfo("mr") };

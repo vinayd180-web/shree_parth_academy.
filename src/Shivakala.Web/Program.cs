@@ -11,7 +11,8 @@ using System.Globalization;
 var builder = WebApplication.CreateBuilder(args);
 
 // --- PORT CONFIGURATION FIX ---
-var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+// Use 8080 for Railway compatibility
+var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
     serverOptions.ListenAnyIP(int.Parse(port));
@@ -90,23 +91,38 @@ builder.Services.Configure<RequestLocalizationOptions>(options => {
 
 var app = builder.Build();
 
-// --- TABLE CREATE FIX - With Better Error Handling ---
+// --- DATABASE MIGRATION FIX - Use Migrate() instead of EnsureCreated() ---
 try
 {
     using (var scope = app.Services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<ShivakalaDbContext>();
-        db.Database.EnsureCreated();
-        Console.WriteLine(">>> TABLES CREATED SUCCESSFULLY <<<");
+        // This will apply all pending migrations and create tables if they don't exist
+        db.Database.Migrate();
+        Console.WriteLine(">>> DATABASE MIGRATED SUCCESSFULLY <<<");
     }
 }
 catch (Exception ex)
 {
-    Console.WriteLine($">>> CRITICAL ERROR: Failed to create database tables <<<");
+    Console.WriteLine($">>> CRITICAL ERROR: Failed to migrate database <<<");
     Console.WriteLine($">>> Error Message: {ex.Message} <<<");
     Console.WriteLine($">>> Stack Trace: {ex.StackTrace} <<<");
-    // Log but don't crash - app can run with table creation failure
-    // (tables might already exist)
+    // Try EnsureCreated as fallback if Migrate fails
+    try
+    {
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ShivakalaDbContext>();
+            db.Database.EnsureCreated();
+            Console.WriteLine(">>> TABLES CREATED WITH EnsureCreated <<<");
+        }
+    }
+    catch (Exception ex2)
+    {
+        Console.WriteLine($">>> CRITICAL ERROR: Failed to create database tables <<<");
+        Console.WriteLine($">>> Error Message: {ex2.Message} <<<");
+        // Don't crash - let the app continue with retry logic
+    }
 }
 
 var locOptions = app.Services.GetService<IOptions<RequestLocalizationOptions>>();

@@ -10,7 +10,6 @@ using System.Globalization;
 var builder = WebApplication.CreateBuilder(args);
 
 // --- PORT CONFIGURATION FIX ---
-// Use 8080 for Railway compatibility
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
@@ -20,21 +19,16 @@ Console.WriteLine($"[Port Config] Server listening on port: {port}");
 
 // --- Database Connection Logic [Railway Fix] ---
 string connectionString = "";
-
-// Try to get DATABASE_URL from Railway
 var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
 
 if (!string.IsNullOrEmpty(databaseUrl))
 {
     connectionString = databaseUrl;
     Console.WriteLine($"[DB Config] ✅ Using DATABASE_URL from Railway");
-    Console.WriteLine($"[DB Config] Connection string length: {connectionString.Length}");
 }
 else
 {
-    Console.WriteLine("[DB Config WARNING] DATABASE_URL not found, checking individual variables...");
-    
-    // Fallback for local development
+    Console.WriteLine("[DB Config] DATABASE_URL not found, checking individual variables...");
     var host = Environment.GetEnvironmentVariable("DB_HOST");
     var dbName = Environment.GetEnvironmentVariable("DB_NAME");
     var dbPort = Environment.GetEnvironmentVariable("DB_PORT") ?? "5432";
@@ -44,7 +38,7 @@ else
     if (!string.IsNullOrEmpty(host) && !string.IsNullOrEmpty(dbName) && !string.IsNullOrEmpty(user) && !string.IsNullOrEmpty(pass))
     {
         connectionString = $"Host={host};Database={dbName};Port={dbPort};Username={user};Password={pass};SSL Mode=Require;Trust Server Certificate=true;";
-        Console.WriteLine($"[DB Config] Using PostgreSQL from environment variables - Host={host}, Database={dbName}, Port={dbPort}");
+        Console.WriteLine($"[DB Config] Using PostgreSQL from environment variables");
     }
     else
     {
@@ -55,13 +49,12 @@ else
         }
         else
         {
-            Console.WriteLine("[DB Config WARNING] No database connection configured! Using SQLite fallback.");
+            Console.WriteLine("[DB Config] No database connection configured! Using SQLite fallback.");
             connectionString = "Data Source=App_Data/shivakala.db";
         }
     }
 }
 
-// Validate connection string
 if (string.IsNullOrWhiteSpace(connectionString))
 {
     Console.WriteLine("[CRITICAL ERROR] No database connection string available. Application cannot start.");
@@ -72,7 +65,6 @@ builder.Services.AddDbContext<ShivakalaDbContext>(options =>
     options.UseNpgsql(connectionString));
 
 // --- Register Services ---
-// Note: Interfaces are in Infrastructure since Application project doesn't exist
 builder.Services.AddScoped<ICourseRepository, CourseRepository>();
 builder.Services.AddScoped<ICourseService, CourseService>();
 builder.Services.AddScoped<IHomePageService, HomePageService>();
@@ -106,10 +98,7 @@ try
 }
 catch (Exception ex)
 {
-    Console.WriteLine($">>> CRITICAL ERROR: Failed to migrate database <<<");
-    Console.WriteLine($">>> Error Message: {ex.Message} <<<");
-    Console.WriteLine($">>> Stack Trace: {ex.StackTrace} <<<");
-    // Try EnsureCreated as fallback if Migrate fails
+    Console.WriteLine($">>> ERROR: Failed to migrate database: {ex.Message} <<<");
     try
     {
         using (var scope = app.Services.CreateScope())
@@ -121,9 +110,7 @@ catch (Exception ex)
     }
     catch (Exception ex2)
     {
-        Console.WriteLine($">>> CRITICAL ERROR: Failed to create database tables <<<");
-        Console.WriteLine($">>> Error Message: {ex2.Message} <<<");
-        // Don't crash - let the app continue with retry logic
+        Console.WriteLine($">>> ERROR: Failed to create tables: {ex2.Message} <<<");
     }
 }
 

@@ -69,6 +69,7 @@ builder.Services.AddScoped<ICourseRepository, CourseRepository>();
 builder.Services.AddScoped<ICourseService, CourseService>();
 builder.Services.AddScoped<IHomePageService, HomePageService>();
 
+// --- Localization Setup ---
 builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
 
 builder.Services.AddControllersWithViews()
